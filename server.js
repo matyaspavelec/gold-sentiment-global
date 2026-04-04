@@ -284,7 +284,7 @@ app.post('/api/prefetch', express.json(), async (req, res) => {
 });
 
 // --- Start ---
-app.listen(PORT, () => {
-    console.log(`Gold Sentiment Model server running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Gold Sentiment Model server running on http://0.0.0.0:${PORT}`);
     console.log(`API calls cached to: ${CACHE_DIR}`);
 });
