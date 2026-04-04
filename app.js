@@ -82,17 +82,20 @@
 
     // --- Init ---
     async function init() {
-        // Start with generated data immediately (fast render)
-        createMainChart();
-        renderCrisisLegend();
-        renderEventTimeline();
-        renderCorrelations();
-        renderPresidents();
+        // Bind all interactions FIRST so buttons always work
         bindNavigation();
         bindTimeframe();
         bindDetailClose();
         bindChartControls();
+
+        // Then render content (wrapped in try/catch so errors don't kill the page)
+        try { createMainChart(); } catch (e) { console.error('Chart error:', e); }
+        try { renderCrisisLegend(); } catch (e) { console.error('Crisis legend error:', e); }
+        try { renderEventTimeline(); } catch (e) { console.error('Event timeline error:', e); }
+        try { renderCorrelations(); } catch (e) { console.error('Correlations error:', e); }
+        try { renderPresidents(); } catch (e) { console.error('Presidents error:', e); }
         updatePriceDisplay();
+        updateView();
 
         // Then try to load live data in background
         const hasLive = await fetchLiveGoldData();
@@ -766,15 +769,40 @@
     }
 
     function updateView() {
-        const showCorrelations = currentView === 'overview' || currentView === 'correlations';
-        const showPresidents = currentView === 'presidents';
+        const $chartSection = document.querySelector('.chart-section');
+        const $detailPanelEl = document.getElementById('detailPanel');
+        const $eventTimelineEl = document.getElementById('eventTimeline');
 
-        $correlationsSection.style.display = showCorrelations ? 'block' : 'none';
-        $presidentsSection.style.display = showPresidents ? 'block' : 'none';
-
-        if (currentView === 'presidents') {
+        if (currentView === 'overview') {
+            // Show everything
+            if ($chartSection) $chartSection.style.display = '';
+            if ($detailPanelEl) $detailPanelEl.style.display = '';
+            if ($eventTimelineEl) $eventTimelineEl.style.display = '';
+            $correlationsSection.style.display = 'block';
+            $presidentsSection.style.display = 'none';
+            // Recreate chart in case it was hidden (fixes sizing)
+            setTimeout(() => {
+                try { createMainChart(); } catch (e) { console.error('Chart recreate error:', e); }
+            }, 50);
+        } else if (currentView === 'correlations') {
+            // Hide chart, show correlations only
+            if ($chartSection) $chartSection.style.display = 'none';
+            if ($detailPanelEl) $detailPanelEl.style.display = 'none';
+            if ($eventTimelineEl) $eventTimelineEl.style.display = 'none';
+            $correlationsSection.style.display = 'block';
+            $presidentsSection.style.display = 'none';
+            // Scroll to correlations
+            $correlationsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else if (currentView === 'presidents') {
+            // Hide chart, show presidents only
+            if ($chartSection) $chartSection.style.display = 'none';
+            if ($detailPanelEl) $detailPanelEl.style.display = 'none';
+            if ($eventTimelineEl) $eventTimelineEl.style.display = 'none';
+            $correlationsSection.style.display = 'none';
+            $presidentsSection.style.display = 'block';
             // Re-render to trigger animations
-            renderPresidents();
+            try { renderPresidents(); } catch (e) { console.error('Presidents render error:', e); }
+            $presidentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }
 
