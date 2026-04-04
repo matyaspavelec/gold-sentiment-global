@@ -12,6 +12,9 @@
     let activeEvent = null;
     let currentTimeframe = 'D';
     let currentView = 'overview';
+    let liveGoldData = null;   // Populated from API when available
+    let apiAvailable = false;
+    let latestLivePrice = null;
 
     // --- DOM Refs ---
     const $mainChart = document.getElementById('mainChart');
@@ -27,16 +30,102 @@
     const $presidentsSection = document.getElementById('presidentsSection');
     const $correlationsSection = document.getElementById('correlationsSection');
 
+    // --- API Helpers ---
+    async function apiFetch(path) {
+        const resp = await fetch('/api' + path);
+        if (!resp.ok) throw new Error(`API ${resp.status}`);
+        return resp.json();
+    }
+
+    // Fetch live gold data from backend
+    async function fetchLiveGoldData() {
+        try {
+            // First check if API is available
+            const usage = await apiFetch('/usage');
+            if (!usage.plan) return false;
+
+            apiAvailable = true;
+            console.log(`API connected — plan: ${usage.plan}, used: ${usage.used}/${usage.quota}`);
+
+            // Fetch latest price
+            try {
+                const latest = await apiFetch('/latest');
+                if (latest.success && latest.rates && latest.rates.XAU) {
+                    latestLivePrice = latest.rates.XAU;
+                    console.log(`Live gold price: $${latestLivePrice}`);
+                }
+            } catch (e) {
+                console.warn('Could not fetch latest price:', e.message);
+            }
+
+            // Fetch weekly historical data (conserves API calls)
+            // Start from 2000 to cover full history
+            const today = new Date().toISOString().split('T')[0];
+            const data = await apiFetch(`/gold?start=2000-01-01&end=${today}&interval=weekly`);
+
+            if (data.success && data.data && data.data.length > 0) {
+                liveGoldData = data.data;
+                console.log(`Loaded ${data.count} live gold OHLC bars`);
+                return true;
+            }
+            return false;
+        } catch (err) {
+            console.log('API not available, using generated data:', err.message);
+            return false;
+        }
+    }
+
+    // Get the active dataset (live or generated)
+    function getGoldData() {
+        return liveGoldData || GOLD_DATA;
+    }
+
     // --- Init ---
-    function init() {
+    async function init() {
+        // Start with generated data immediately (fast render)
         createMainChart();
+        renderCrisisLegend();
         renderEventTimeline();
         renderCorrelations();
         renderPresidents();
         bindNavigation();
         bindTimeframe();
         bindDetailClose();
+        bindChartControls();
         updatePriceDisplay();
+
+        // Then try to load live data in background
+        const hasLive = await fetchLiveGoldData();
+        if (hasLive) {
+            // Re-render chart with live data
+            console.log('Switching to live API data...');
+            createMainChart();
+            updatePriceDisplay();
+            showDataSourceBadge(true);
+        } else {
+            showDataSourceBadge(false);
+        }
+    }
+
+    function showDataSourceBadge(isLive) {
+        let badge = document.getElementById('dataSourceBadge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.id = 'dataSourceBadge';
+            badge.style.cssText = 'font-size:0.6rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:0.2rem 0.6rem;border-radius:4px;margin-left:1rem;';
+            document.querySelector('.chart-title-group').appendChild(badge);
+        }
+        if (isLive) {
+            badge.textContent = 'LIVE';
+            badge.style.color = '#4ade80';
+            badge.style.background = 'rgba(74,222,128,0.1)';
+            badge.style.border = '1px solid rgba(74,222,128,0.2)';
+        } else {
+            badge.textContent = 'SAMPLE DATA';
+            badge.style.color = '#b0b0b8';
+            badge.style.background = 'rgba(255,255,255,0.05)';
+            badge.style.border = '1px solid rgba(255,255,255,0.1)';
+        }
     }
 
     // --- Main Chart ---
@@ -76,7 +165,7 @@
             },
             rightPriceScale: {
                 borderColor: 'rgba(255,255,255,0.06)',
-                scaleMargins: { top: 0.1, bottom: 0.1 },
+                scaleMargins: { top: 0.08, bottom: 0.15 },
             },
             timeScale: {
                 borderColor: 'rgba(255,255,255,0.06)',
@@ -88,6 +177,100 @@
             handleScroll: { vertTouchDrag: false },
         });
 
+        const chartData = getDataForTimeframe(currentTimeframe);
+
+        // 1) Presidential term background bands (lowest layer)
+        PRESIDENTIAL_PERIODS.forEach(pres => {
+            const presData = chartData
+                .filter(bar => bar.time >= pres.start && bar.time <= pres.end)
+                .map(bar => ({ time: bar.time, value: bar.high * 1.25 }));
+
+            if (presData.length > 0) {
+                const isRep = pres.party === 'republican';
+                const bgSeries = mainChart.addAreaSeries({
+                    topColor: isRep ? 'rgba(248, 113, 113, 0.035)' : 'rgba(96, 165, 250, 0.035)',
+                    bottomColor: isRep ? 'rgba(248, 113, 113, 0.01)' : 'rgba(96, 165, 250, 0.01)',
+                    lineColor: isRep ? 'rgba(248, 113, 113, 0.12)' : 'rgba(96, 165, 250, 0.12)',
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Solid,
+                    crosshairMarkerVisible: false,
+                    priceLineVisible: false,
+                    lastValueVisible: false,
+                });
+                bgSeries.setData(presData);
+            }
+        });
+
+        // 2) Crisis zone overlays (above presidential bands)
+        CRISIS_PERIODS.forEach(crisis => {
+            const highlightData = chartData
+                .filter(bar => bar.time >= crisis.start && bar.time <= crisis.end)
+                .map(bar => ({ time: bar.time, value: bar.high * 1.15 }));
+
+            if (highlightData.length > 0) {
+                const bgSeries = mainChart.addAreaSeries({
+                    topColor: crisis.color,
+                    bottomColor: crisis.color,
+                    lineColor: crisis.borderColor,
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Dotted,
+                    crosshairMarkerVisible: false,
+                    priceLineVisible: false,
+                    lastValueVisible: false,
+                });
+                bgSeries.setData(highlightData);
+            }
+        });
+
+        // 3) Volume-style histogram (shows price change magnitude)
+        const volumeSeries = mainChart.addHistogramSeries({
+            priceFormat: { type: 'volume' },
+            priceScaleId: 'volume',
+            color: '#c9a84c',
+        });
+        mainChart.priceScale('volume').applyOptions({
+            scaleMargins: { top: 0.85, bottom: 0 },
+        });
+        const volumeData = chartData.map(bar => {
+            const change = Math.abs(bar.close - bar.open);
+            const isUp = bar.close >= bar.open;
+            return {
+                time: bar.time,
+                value: change * 100,
+                color: isUp ? 'rgba(201, 168, 76, 0.25)' : 'rgba(90, 79, 58, 0.35)',
+            };
+        });
+        volumeSeries.setData(volumeData);
+
+        // 4) SMA 50 overlay for trend context
+        const sma50Data = calculateSMA(chartData, 50);
+        if (sma50Data.length > 0) {
+            const smaSeries = mainChart.addLineSeries({
+                color: 'rgba(123, 140, 173, 0.4)',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Solid,
+                crosshairMarkerVisible: false,
+                priceLineVisible: false,
+                lastValueVisible: false,
+            });
+            smaSeries.setData(sma50Data);
+        }
+
+        // 5) SMA 200 overlay
+        const sma200Data = calculateSMA(chartData, 200);
+        if (sma200Data.length > 0) {
+            const sma200Series = mainChart.addLineSeries({
+                color: 'rgba(201, 168, 76, 0.25)',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                crosshairMarkerVisible: false,
+                priceLineVisible: false,
+                lastValueVisible: false,
+            });
+            sma200Series.setData(sma200Data);
+        }
+
+        // 6) Candlestick series (main layer)
         candleSeries = mainChart.addCandlestickSeries({
             upColor: '#c9a84c',
             downColor: '#5a4f3a',
@@ -96,11 +279,9 @@
             wickUpColor: '#c9a84c',
             wickDownColor: '#5a4f3a',
         });
+        candleSeries.setData(chartData);
 
-        const data = getDataForTimeframe(currentTimeframe);
-        candleSeries.setData(data);
-
-        // Add event markers on the chart
+        // 7) Event markers
         const markers = GOLD_EVENTS.map(evt => ({
             time: evt.date,
             position: evt.direction === 'bullish' ? 'belowBar' : 'aboveBar',
@@ -108,22 +289,34 @@
             shape: evt.direction === 'bullish' ? 'arrowUp' : 'arrowDown',
             text: evt.title.length > 25 ? evt.title.substring(0, 25) + '...' : evt.title,
         })).sort((a, b) => a.time.localeCompare(b.time));
-
         candleSeries.setMarkers(markers);
 
-        // Subscribe to crosshair for price display
+        // 8) Floating tooltip on crosshair
+        createTooltip();
         mainChart.subscribeCrosshairMove(param => {
             if (!param || !param.time) {
                 updatePriceDisplay();
+                hideTooltip();
                 return;
             }
-            const data = param.seriesData.get(candleSeries);
+            const data = param.seriesData ? param.seriesData.get(candleSeries) : null;
             if (data) {
                 $currentPrice.textContent = '$' + data.close.toLocaleString('en-US', { minimumFractionDigits: 2 });
+
+                // Find which president & crisis this date falls in
+                let timeStr;
+                if (typeof param.time === 'string') { timeStr = param.time; }
+                else if (param.time.year) {
+                    timeStr = `${param.time.year}-${String(param.time.month).padStart(2,'0')}-${String(param.time.day).padStart(2,'0')}`;
+                }
+                const pres = PRESIDENTIAL_PERIODS.find(p => timeStr >= p.start && timeStr <= p.end);
+                const crisis = CRISIS_PERIODS.find(c => timeStr >= c.start && timeStr <= c.end);
+
+                showTooltip(param.point, data, pres, crisis, timeStr);
             }
         });
 
-        // Click on chart to detect nearest event
+        // Click to select nearest event
         mainChart.subscribeClick(param => {
             if (!param || !param.time) return;
             const clickedTime = param.time;
@@ -146,14 +339,13 @@
     }
 
     function getDataForTimeframe(tf) {
+        const data = getGoldData();
         if (tf === 'W') {
-            // Aggregate to weekly
-            return aggregateToWeekly(GOLD_DATA);
+            return aggregateToWeekly(data);
         } else if (tf === '4H') {
-            // Simulate 4H by expanding daily data
-            return expandTo4H(GOLD_DATA);
+            return expandTo4H(data);
         }
-        return GOLD_DATA;
+        return data;
     }
 
     function aggregateToWeekly(data) {
@@ -219,10 +411,17 @@
     }
 
     function updatePriceDisplay() {
-        const lastBar = GOLD_DATA[GOLD_DATA.length - 1];
+        // Use live price if available
+        if (latestLivePrice) {
+            $currentPrice.textContent = '$' + Number(latestLivePrice).toLocaleString('en-US', { minimumFractionDigits: 2 });
+        }
+        const goldData = getGoldData();
+        const lastBar = goldData[goldData.length - 1];
         if (!lastBar) return;
-        const prevBar = GOLD_DATA[GOLD_DATA.length - 2];
-        $currentPrice.textContent = '$' + lastBar.close.toLocaleString('en-US', { minimumFractionDigits: 2 });
+        const prevBar = goldData[goldData.length - 2];
+        if (!latestLivePrice) {
+            $currentPrice.textContent = '$' + lastBar.close.toLocaleString('en-US', { minimumFractionDigits: 2 });
+        }
 
         if (prevBar) {
             const change = ((lastBar.close - prevBar.close) / prevBar.close * 100).toFixed(2);
@@ -262,7 +461,8 @@
 
         // Scroll chart to event
         const eventDate = evt.date;
-        mainChart.timeScale().scrollToPosition(-GOLD_DATA.findIndex(d => d.time >= eventDate) + GOLD_DATA.length - 20, false);
+        const gData = getGoldData();
+        mainChart.timeScale().scrollToPosition(-gData.findIndex(d => d.time >= eventDate) + gData.length - 20, false);
 
         // Show detail panel
         renderDetailPanel(evt);
@@ -329,12 +529,42 @@
         `;
     }
 
+    // --- Crisis Legend ---
+    function renderCrisisLegend() {
+        const legendContainer = document.getElementById('chartLegend');
+        if (!legendContainer) return;
+
+        // Add crisis type items
+        const types = {};
+        CRISIS_PERIODS.forEach(c => { types[c.type] = CRISIS_TYPES[c.type]; });
+
+        Object.entries(types).forEach(([type, info]) => {
+            const item = document.createElement('span');
+            item.className = 'crisis-legend-item';
+            item.innerHTML = `<span class="crisis-legend-dot" style="background:${info.color}"></span>${info.label}`;
+            legendContainer.appendChild(item);
+        });
+    }
+
     // --- Correlations ---
     function renderCorrelations() {
         $positiveCorr.innerHTML = '';
         $negativeCorr.innerHTML = '';
 
         Object.values(INSTRUMENTS).forEach(inst => {
+            const snapshotsHTML = inst.historicalSnapshots ? inst.historicalSnapshots.map(s => `
+                <tr>
+                    <td>${s.date}</td>
+                    <td>${s.event}</td>
+                    <td style="font-variant-numeric:tabular-nums;">${s.value}</td>
+                    <td style="color:${s.goldMove.startsWith('+') || s.goldMove.includes('ATH') ? 'var(--green)' : s.goldMove.startsWith('-') ? 'var(--red)' : 'var(--light-blue)'}">${s.goldMove}</td>
+                </tr>
+            `).join('') : '';
+
+            const rangesHTML = inst.ranges ? Object.entries(inst.ranges).map(([key, val]) => `
+                <div class="range-item">${val}</div>
+            `).join('') : '';
+
             const card = document.createElement('div');
             card.className = 'corr-card';
             card.innerHTML = `
@@ -342,8 +572,22 @@
                     <span class="corr-card-name">${inst.name}</span>
                     <span class="corr-card-correlation ${inst.correlation}">${inst.corrValue}</span>
                 </div>
-                <div class="corr-card-value">${inst.currentValue}</div>
+                <div class="corr-card-fullname">${inst.fullName}</div>
+                <div class="corr-card-value-row">
+                    <span class="corr-card-value">${inst.currentValue}</span>
+                    ${inst.trend ? `<span class="corr-card-trend ${inst.trend}">${inst.trendLabel}</span>` : ''}
+                </div>
                 <div class="corr-card-desc">${inst.description}</div>
+                ${inst.mechanism ? `<div class="corr-card-mechanism">${inst.mechanism}</div>` : ''}
+                ${snapshotsHTML ? `
+                <div class="corr-card-snapshots">
+                    <h5>Historical Snapshots</h5>
+                    <table class="snapshot-table">
+                        <thead><tr><th>Date</th><th>Event</th><th>Value</th><th>Gold</th></tr></thead>
+                        <tbody>${snapshotsHTML}</tbody>
+                    </table>
+                </div>` : ''}
+                ${rangesHTML ? `<div class="corr-card-ranges">${rangesHTML}</div>` : ''}
                 <div class="corr-card-mini-chart" id="mini-${inst.name.toLowerCase().replace(/\s/g, '')}"></div>
             `;
 
@@ -399,7 +643,7 @@
 
     function generateCorrelatedData(inst) {
         const data = [];
-        const goldSubset = GOLD_DATA.filter((_, i) => i % 7 === 0).slice(-80);
+        const goldSubset = getGoldData().filter((_, i) => i % 7 === 0).slice(-80);
         let val;
 
         // Set base values
@@ -435,6 +679,40 @@
         $presidentsGrid.innerHTML = '';
         PRESIDENTIAL_TERMS.forEach(pres => {
             const isPositive = !pres.change.startsWith('-');
+
+            const eventsHTML = pres.keyEvents ? pres.keyEvents.map(e => `
+                <div class="president-event-item">
+                    <span class="president-event-impact ${e.impact}"></span>
+                    <span class="president-event-year">${e.year}</span>
+                    <span class="president-event-text">${e.event}</span>
+                </div>
+            `).join('') : '';
+
+            const macroHTML = pres.macroSnapshot ? `
+                <div class="president-macro">
+                    <div class="president-macro-item">
+                        <div class="president-macro-label">Fed Funds</div>
+                        <div class="president-macro-value">${pres.macroSnapshot.fedFunds}</div>
+                    </div>
+                    <div class="president-macro-item">
+                        <div class="president-macro-label">CPI</div>
+                        <div class="president-macro-value">${pres.macroSnapshot.inflation}</div>
+                    </div>
+                    <div class="president-macro-item">
+                        <div class="president-macro-label">DXY</div>
+                        <div class="president-macro-value">${pres.macroSnapshot.dxy}</div>
+                    </div>
+                    <div class="president-macro-item">
+                        <div class="president-macro-label">Unemp.</div>
+                        <div class="president-macro-value">${pres.macroSnapshot.unemployment}</div>
+                    </div>
+                    <div class="president-macro-item">
+                        <div class="president-macro-label">Nat. Debt</div>
+                        <div class="president-macro-value">${pres.macroSnapshot.debt}</div>
+                    </div>
+                </div>
+            ` : '';
+
             const card = document.createElement('div');
             card.className = 'president-card fade-in';
             card.innerHTML = `
@@ -447,7 +725,7 @@
                 </div>
                 <div class="president-stats">
                     <div class="president-stat">
-                        <div class="president-stat-label">Performance</div>
+                        <div class="president-stat-label">Gold Performance</div>
                         <div class="president-stat-value ${isPositive ? 'up' : 'down'}">${pres.change}</div>
                     </div>
                     <div class="president-stat">
@@ -463,7 +741,13 @@
                         <div class="president-stat-value down">$${pres.low.toLocaleString()}</div>
                     </div>
                 </div>
-                <p style="margin-top:0.75rem;font-size:0.75rem;color:var(--light-gray);font-weight:300;line-height:1.6;">${pres.context}</p>
+                ${macroHTML}
+                ${eventsHTML ? `
+                <div class="president-events">
+                    <h5>Key Events</h5>
+                    ${eventsHTML}
+                </div>` : ''}
+                ${pres.analysis ? `<div class="president-analysis">${pres.analysis}</div>` : ''}
             `;
             $presidentsGrid.appendChild(card);
         });
@@ -506,6 +790,40 @@
         });
     }
 
+    // --- Chart Controls ---
+    function bindChartControls() {
+        document.getElementById('btnZoomIn').addEventListener('click', () => {
+            if (!mainChart) return;
+            const ts = mainChart.timeScale();
+            const currentSpacing = ts.options().barSpacing || 6;
+            ts.applyOptions({ barSpacing: Math.min(currentSpacing + 3, 40) });
+        });
+
+        document.getElementById('btnZoomOut').addEventListener('click', () => {
+            if (!mainChart) return;
+            const ts = mainChart.timeScale();
+            const currentSpacing = ts.options().barSpacing || 6;
+            ts.applyOptions({ barSpacing: Math.max(currentSpacing - 3, 1) });
+        });
+
+        document.getElementById('btnPanLeft').addEventListener('click', () => {
+            if (!mainChart) return;
+            const ts = mainChart.timeScale();
+            ts.scrollToPosition(ts.scrollPosition() - 30, true);
+        });
+
+        document.getElementById('btnPanRight').addEventListener('click', () => {
+            if (!mainChart) return;
+            const ts = mainChart.timeScale();
+            ts.scrollToPosition(ts.scrollPosition() + 30, true);
+        });
+
+        document.getElementById('btnReset').addEventListener('click', () => {
+            if (!mainChart) return;
+            mainChart.timeScale().fitContent();
+        });
+    }
+
     // --- Detail Panel ---
     function bindDetailClose() {
         $detailClose.addEventListener('click', () => {
@@ -513,6 +831,64 @@
             activeEvent = null;
             document.querySelectorAll('.timeline-chip').forEach(c => c.classList.remove('active'));
         });
+    }
+
+    // --- SMA Calculation ---
+    function calculateSMA(data, period) {
+        const result = [];
+        for (let i = period - 1; i < data.length; i++) {
+            let sum = 0;
+            for (let j = 0; j < period; j++) {
+                sum += data[i - j].close;
+            }
+            result.push({ time: data[i].time, value: Math.round(sum / period * 100) / 100 });
+        }
+        return result;
+    }
+
+    // --- Floating Tooltip ---
+    let tooltipEl = null;
+
+    function createTooltip() {
+        // Remove old one if exists
+        if (tooltipEl) tooltipEl.remove();
+        tooltipEl = document.createElement('div');
+        tooltipEl.className = 'chart-tooltip';
+        tooltipEl.style.display = 'none';
+        $mainChart.appendChild(tooltipEl);
+    }
+
+    function showTooltip(point, data, pres, crisis, timeStr) {
+        if (!tooltipEl || !point) return;
+        const change = ((data.close - data.open) / data.open * 100).toFixed(2);
+        const isUp = data.close >= data.open;
+        const presLabel = pres ? `<span class="tt-pres ${pres.party}">${pres.name}</span>` : '';
+        const crisisLabel = crisis ? `<span class="tt-crisis">${crisis.label}</span>` : '';
+
+        tooltipEl.innerHTML = `
+            <div class="tt-date">${timeStr || ''}${presLabel}${crisisLabel}</div>
+            <div class="tt-prices">
+                <span>O <b>${data.open.toFixed(2)}</b></span>
+                <span>H <b>${data.high.toFixed(2)}</b></span>
+                <span>L <b>${data.low.toFixed(2)}</b></span>
+                <span>C <b>${data.close.toFixed(2)}</b></span>
+                <span class="${isUp ? 'tt-up' : 'tt-down'}">${isUp ? '+' : ''}${change}%</span>
+            </div>
+        `;
+        tooltipEl.style.display = 'block';
+
+        // Position
+        const chartRect = $mainChart.getBoundingClientRect();
+        let left = point.x + 15;
+        let top = point.y - 10;
+        if (left + 280 > chartRect.width) left = point.x - 280;
+        if (top < 10) top = 10;
+        tooltipEl.style.left = left + 'px';
+        tooltipEl.style.top = top + 'px';
+    }
+
+    function hideTooltip() {
+        if (tooltipEl) tooltipEl.style.display = 'none';
     }
 
     // --- Helpers ---

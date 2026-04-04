@@ -231,6 +231,10 @@ body {
 
 .legend-gold::before { background: var(--gold); }
 
+.chart-wrapper {
+    position: relative;
+}
+
 .chart-container {
     width: 100%;
     height: 520px;
@@ -239,6 +243,53 @@ body {
     border-radius: 8px;
     overflow: hidden;
     position: relative;
+}
+
+/* Chart Controls */
+.chart-controls {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: rgba(17, 17, 23, 0.92);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px;
+    z-index: 10;
+    backdrop-filter: blur(8px);
+}
+
+.chart-ctrl-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 28px;
+    background: none;
+    border: none;
+    color: var(--light-gray);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all var(--transition);
+}
+
+.chart-ctrl-btn:hover {
+    color: var(--white);
+    background: var(--mid-gray);
+}
+
+.chart-ctrl-btn:active {
+    background: rgba(201, 168, 76, 0.15);
+    color: var(--gold);
+}
+
+.chart-ctrl-divider {
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+    margin: 0 2px;
 }
 
 /* Event markers on chart */
@@ -543,7 +594,52 @@ body {
 }
 
 /* ============================================
-   CORRELATIONS SECTION
+   CRISIS LEGEND
+   ============================================ */
+
+.crisis-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    margin-bottom: 0.5rem;
+}
+
+.crisis-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.65rem;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--light-gray);
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    transition: all var(--transition);
+}
+
+.crisis-legend-item:hover {
+    background: rgba(255,255,255,0.04);
+    border-color: var(--border);
+}
+
+.crisis-legend-item.active {
+    border-color: var(--border-hover);
+    color: var(--white);
+}
+
+.crisis-legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+/* ============================================
+   CORRELATIONS SECTION (Enhanced)
    ============================================ */
 
 .correlations-section {
@@ -585,7 +681,7 @@ body {
 
 .correlation-cards {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
     gap: 1rem;
 }
 
@@ -593,8 +689,7 @@ body {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 1.25rem 1.5rem;
-    cursor: pointer;
+    padding: 1.5rem;
     transition: all var(--transition);
     position: relative;
     overflow: hidden;
@@ -603,21 +698,27 @@ body {
 .corr-card:hover {
     border-color: var(--border-hover);
     background: var(--surface-elevated);
-    transform: translateY(-1px);
 }
 
 .corr-card-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.5rem;
 }
 
 .corr-card-name {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+}
+
+.corr-card-fullname {
+    font-size: 0.65rem;
+    color: var(--light-gray);
+    font-weight: 300;
+    margin-bottom: 0.75rem;
 }
 
 .corr-card-correlation {
@@ -638,11 +739,41 @@ body {
     background: rgba(248, 113, 113, 0.08);
 }
 
+.corr-card-value-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
 .corr-card-value {
-    font-size: 1.4rem;
+    font-size: 1.6rem;
     font-weight: 300;
-    margin-bottom: 0.25rem;
     font-variant-numeric: tabular-nums;
+}
+
+.corr-card-trend {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+}
+
+.corr-card-trend.up {
+    color: var(--green);
+    background: rgba(74, 222, 128, 0.08);
+}
+
+.corr-card-trend.down {
+    color: var(--red);
+    background: rgba(248, 113, 113, 0.08);
+}
+
+.corr-card-trend.flat {
+    color: var(--light-blue);
+    background: rgba(123, 140, 173, 0.08);
 }
 
 .corr-card-desc {
@@ -650,6 +781,75 @@ body {
     color: var(--light-gray);
     font-weight: 300;
     letter-spacing: 0.02em;
+    margin-bottom: 0.75rem;
+}
+
+.corr-card-mechanism {
+    font-size: 0.72rem;
+    line-height: 1.65;
+    color: rgba(245,245,247,0.7);
+    font-weight: 300;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: rgba(255,255,255,0.02);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+
+.corr-card-snapshots {
+    margin-bottom: 0.75rem;
+}
+
+.corr-card-snapshots h5 {
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--light-gray);
+    margin-bottom: 0.5rem;
+}
+
+.snapshot-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.snapshot-table th {
+    font-size: 0.6rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--light-gray);
+    text-align: left;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.snapshot-table td {
+    font-size: 0.7rem;
+    font-weight: 400;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    color: rgba(245,245,247,0.8);
+}
+
+.snapshot-table td:last-child {
+    font-weight: 600;
+}
+
+.corr-card-ranges {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem;
+    margin-top: 0.75rem;
+}
+
+.range-item {
+    font-size: 0.6rem;
+    color: var(--light-gray);
+    padding: 0.2rem 0.4rem;
+    background: rgba(255,255,255,0.02);
+    border-radius: 3px;
 }
 
 .corr-card-mini-chart {
@@ -659,7 +859,7 @@ body {
 }
 
 /* ============================================
-   PRESIDENTS SECTION
+   PRESIDENTS SECTION (Enhanced)
    ============================================ */
 
 .presidents-section {
@@ -677,15 +877,15 @@ body {
 
 .presidents-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+    gap: 1.25rem;
 }
 
 .president-card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 1.5rem;
+    padding: 1.75rem;
     transition: all var(--transition);
 }
 
@@ -701,7 +901,7 @@ body {
 }
 
 .president-name {
-    font-size: 1rem;
+    font-size: 1.1rem;
     font-weight: 500;
     letter-spacing: 0.03em;
 }
@@ -737,6 +937,7 @@ body {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.75rem;
+    margin-bottom: 1rem;
 }
 
 .president-stat {
@@ -747,7 +948,7 @@ body {
 }
 
 .president-stat-label {
-    font-size: 0.65rem;
+    font-size: 0.6rem;
     font-weight: 500;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -763,6 +964,106 @@ body {
 
 .president-stat-value.up { color: var(--green); }
 .president-stat-value.down { color: var(--red); }
+
+/* Key Events Timeline */
+.president-events {
+    margin-bottom: 1rem;
+}
+
+.president-events h5 {
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--light-gray);
+    margin-bottom: 0.5rem;
+}
+
+.president-event-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.4rem 0;
+    font-size: 0.72rem;
+    color: rgba(245,245,247,0.8);
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.president-event-item:last-child {
+    border-bottom: none;
+}
+
+.president-event-year {
+    font-weight: 600;
+    color: var(--light-blue);
+    white-space: nowrap;
+    min-width: 52px;
+    font-size: 0.65rem;
+    padding-top: 1px;
+}
+
+.president-event-text {
+    flex: 1;
+    font-weight: 300;
+    line-height: 1.5;
+}
+
+.president-event-impact {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 5px;
+}
+
+.president-event-impact.bullish { background: var(--green); }
+.president-event-impact.bearish { background: var(--red); }
+.president-event-impact.mixed { background: var(--gold); }
+.president-event-impact.neutral { background: var(--light-gray); }
+
+/* Macro Snapshot */
+.president-macro {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+}
+
+.president-macro-item {
+    text-align: center;
+    padding: 0.4rem 0.25rem;
+    background: rgba(255,255,255,0.02);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+}
+
+.president-macro-label {
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--light-gray);
+    margin-bottom: 0.2rem;
+}
+
+.president-macro-value {
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--white);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Analysis */
+.president-analysis {
+    font-size: 0.72rem;
+    line-height: 1.7;
+    font-weight: 300;
+    color: rgba(245,245,247,0.75);
+    padding: 0.75rem;
+    background: rgba(255,255,255,0.02);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
 
 /* ============================================
    RESPONSIVE
@@ -804,3 +1105,117 @@ body {
 .loading {
     animation: pulse 1.5s ease-in-out infinite;
 }
+
+/* ============================================
+   CHART TOOLTIP
+   ============================================ */
+
+.chart-tooltip {
+    position: absolute;
+    z-index: 20;
+    pointer-events: none;
+    background: rgba(17, 17, 23, 0.95);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    backdrop-filter: blur(8px);
+    min-width: 240px;
+}
+
+.tt-date {
+    font-size: 0.65rem;
+    color: var(--light-gray);
+    margin-bottom: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.tt-pres {
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+}
+
+.tt-pres.republican {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.12);
+}
+
+.tt-pres.democrat {
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.12);
+}
+
+.tt-crisis {
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    color: #fb923c;
+    background: rgba(251, 146, 60, 0.12);
+}
+
+.tt-prices {
+    display: flex;
+    gap: 0.6rem;
+    font-size: 0.7rem;
+    color: var(--light-gray);
+    font-variant-numeric: tabular-nums;
+}
+
+.tt-prices b {
+    color: var(--white);
+    font-weight: 500;
+}
+
+.tt-up { color: var(--green); font-weight: 600; }
+.tt-down { color: var(--red); font-weight: 600; }
+
+/* ============================================
+   PRESIDENTIAL LEGEND ON CHART
+   ============================================ */
+
+.pres-legend {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-left: 1rem;
+}
+
+.pres-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.6rem;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--light-gray);
+}
+
+.pres-legend-swatch {
+    width: 12px;
+    height: 8px;
+    border-radius: 2px;
+}
+
+.pres-legend-swatch.republican {
+    background: rgba(248, 113, 113, 0.2);
+    border: 1px solid rgba(248, 113, 113, 0.4);
+}
+
+.pres-legend-swatch.democrat {
+    background: rgba(96, 165, 250, 0.2);
+    border: 1px solid rgba(96, 165, 250, 0.4);
+}
+
+/* SMA legend items */
+.legend-sma50::before { background: rgba(123, 140, 173, 0.6); }
+.legend-sma200::before { background: rgba(201, 168, 76, 0.4); border-style: dashed; }
