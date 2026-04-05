@@ -3,7 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gold Sentiment Model</title>
+    <title>Gold Sentiment Model — XAU/USD Macro Dashboard</title>
+    <meta name="description" content="Track Gold (XAU/USD) sentiment with correlated macro instruments, presidential terms, and crisis analysis. Live data, historical events, and real-time signals.">
+    <meta property="og:title" content="Gold Sentiment Model">
+    <meta property="og:description" content="Interactive macro dashboard tracking Gold sentiment through VIX, DXY, Real Rates, CPI, and Presidential terms. Crisis overlays, event analysis, and live data.">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d5/Gold_Bars.jpg/1280px-Gold_Bars.jpg">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Gold Sentiment Model">
+    <meta name="twitter:description" content="Interactive macro dashboard tracking Gold sentiment through VIX, DXY, Real Rates, CPI, and Presidential terms.">
+    <meta name="theme-color" content="#0a0a0a">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥇</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -29,8 +39,30 @@
         </div>
     </header>
 
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <span class="loading-text">Loading Gold Sentiment Model</span>
+    </div>
+
     <!-- Main Content -->
     <main class="main">
+        <!-- Sentiment Gauge + Market Summary -->
+        <section class="sentiment-bar" id="sentimentBar">
+            <div class="sentiment-gauge-wrap">
+                <div class="gauge-label">COMPOSITE SENTIMENT</div>
+                <div class="gauge-outer">
+                    <div class="gauge-fill" id="gaugeFill"></div>
+                </div>
+                <div class="gauge-reading" id="gaugeReading">—</div>
+            </div>
+            <div class="market-summary" id="marketSummary">
+                <div class="summary-title">WHAT'S DRIVING GOLD</div>
+                <p class="summary-text" id="summaryText">Analyzing signals...</p>
+            </div>
+            <div class="signal-chips" id="signalChips"></div>
+        </section>
+
         <!-- Gold Price Section -->
         <section class="chart-section">
             <div class="chart-header">

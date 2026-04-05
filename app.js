@@ -95,7 +95,11 @@
         try { renderCorrelations(); } catch (e) { console.error('Correlations error:', e); }
         try { renderPresidents(); } catch (e) { console.error('Presidents error:', e); }
         updatePriceDisplay();
+        try { renderSentimentGauge(); } catch (e) { console.error('Sentiment gauge error:', e); }
         updateView();
+
+        // Hide loading overlay
+        hideLoading();
 
         // Then try to load live data in background
         const hasLive = await fetchLiveGoldData();
@@ -108,6 +112,11 @@
         } else {
             showDataSourceBadge(false);
         }
+    }
+
+    function hideLoading() {
+        const overlay = document.getElementById('loadingOverlay');
+        if (overlay) overlay.classList.add('hidden');
     }
 
     function showDataSourceBadge(isLive) {
@@ -432,6 +441,123 @@
             $currentChange.textContent = (isPositive ? '+' : '') + change + '%';
             $currentChange.className = 'chart-change ' + (isPositive ? 'positive' : 'negative');
         }
+    }
+
+    // --- Sentiment Gauge ---
+    function renderSentimentGauge() {
+        const signals = calculateSentimentSignals();
+        const score = signals.score; // 0-100, 50 = neutral
+        const $fill = document.getElementById('gaugeFill');
+        const $reading = document.getElementById('gaugeReading');
+        const $summary = document.getElementById('summaryText');
+        const $chips = document.getElementById('signalChips');
+
+        if (!$fill || !$reading) return;
+
+        // Determine sentiment label
+        let label, cssClass, color;
+        if (score >= 70) { label = 'STRONGLY BULLISH'; cssClass = 'bullish'; color = 'var(--green)'; }
+        else if (score >= 58) { label = 'BULLISH'; cssClass = 'bullish'; color = 'var(--green)'; }
+        else if (score >= 42) { label = 'NEUTRAL'; cssClass = 'neutral'; color = 'var(--gold)'; }
+        else if (score >= 30) { label = 'BEARISH'; cssClass = 'bearish'; color = 'var(--red)'; }
+        else { label = 'STRONGLY BEARISH'; cssClass = 'bearish'; color = 'var(--red)'; }
+
+        // Animate gauge
+        setTimeout(() => {
+            $fill.style.width = score + '%';
+            $fill.style.background = `linear-gradient(90deg, ${color}, ${color})`;
+        }, 300);
+
+        $reading.textContent = label + '  ' + score + '/100';
+        $reading.className = 'gauge-reading ' + cssClass;
+
+        // Market summary
+        if ($summary) $summary.textContent = signals.summary;
+
+        // Signal chips
+        if ($chips) {
+            $chips.innerHTML = signals.chips.map(c =>
+                `<span class="signal-chip ${c.direction}">${c.label}</span>`
+            ).join('');
+        }
+    }
+
+    function calculateSentimentSignals() {
+        const inst = INSTRUMENTS;
+        let score = 50; // Start neutral
+        const chips = [];
+
+        // VIX signal: elevated = bullish for gold
+        const vixVal = parseFloat(inst.vix.currentValue);
+        if (vixVal > 30) { score += 10; chips.push({ label: 'VIX Panic ' + inst.vix.currentValue, direction: 'bullish' }); }
+        else if (vixVal > 20) { score += 5; chips.push({ label: 'VIX Elevated', direction: 'bullish' }); }
+        else { score -= 3; chips.push({ label: 'VIX Calm', direction: 'bearish' }); }
+
+        // DXY signal: weak dollar = bullish for gold
+        const dxyVal = parseFloat(inst.dxy.currentValue);
+        if (dxyVal < 95) { score += 12; chips.push({ label: 'DXY Weak ' + inst.dxy.currentValue, direction: 'bullish' }); }
+        else if (dxyVal < 100) { score += 7; chips.push({ label: 'DXY Softening', direction: 'bullish' }); }
+        else if (dxyVal > 105) { score -= 10; chips.push({ label: 'DXY Strong', direction: 'bearish' }); }
+        else { score += 0; chips.push({ label: 'DXY Neutral', direction: 'neutral' }); }
+
+        // Real rates signal: low/negative = bullish
+        const rrVal = parseFloat(inst.realRates.currentValue);
+        if (rrVal < 0) { score += 15; chips.push({ label: 'Real Rates Negative', direction: 'bullish' }); }
+        else if (rrVal < 1) { score += 8; chips.push({ label: 'Real Rates Low ' + inst.realRates.currentValue, direction: 'bullish' }); }
+        else if (rrVal > 1.5) { score -= 12; chips.push({ label: 'Real Rates High', direction: 'bearish' }); }
+        else { score -= 3; chips.push({ label: 'Real Rates Moderate', direction: 'neutral' }); }
+
+        // CPI signal: high inflation = bullish
+        const cpiVal = parseFloat(inst.cpi.currentValue);
+        if (cpiVal > 4) { score += 8; chips.push({ label: 'CPI Hot ' + inst.cpi.currentValue, direction: 'bullish' }); }
+        else if (cpiVal > 2.5) { score += 4; chips.push({ label: 'CPI Sticky', direction: 'bullish' }); }
+        else { score -= 2; chips.push({ label: 'CPI Contained', direction: 'bearish' }); }
+
+        // Unemployment signal: rising = bullish (rate cut expectations)
+        const unemplVal = parseFloat(inst.unemployment.currentValue);
+        if (unemplVal > 5) { score += 7; chips.push({ label: 'Unemployment High', direction: 'bullish' }); }
+        else if (unemplVal > 4) { score += 3; chips.push({ label: 'Unemployment Rising', direction: 'bullish' }); }
+        else { score -= 3; chips.push({ label: 'Labor Tight', direction: 'bearish' }); }
+
+        // Trend momentum from recent price data
+        const data = getGoldData();
+        if (data.length > 50) {
+            const recent = data.slice(-20);
+            const older = data.slice(-50, -30);
+            const recentAvg = recent.reduce((s, d) => s + d.close, 0) / recent.length;
+            const olderAvg = older.reduce((s, d) => s + d.close, 0) / older.length;
+            const momentum = ((recentAvg - olderAvg) / olderAvg) * 100;
+            if (momentum > 5) { score += 5; chips.push({ label: 'Trend Strong', direction: 'bullish' }); }
+            else if (momentum < -3) { score -= 5; chips.push({ label: 'Trend Weak', direction: 'bearish' }); }
+        }
+
+        // Clamp
+        score = Math.max(0, Math.min(100, Math.round(score)));
+
+        // Generate summary
+        const bullishFactors = [];
+        const bearishFactors = [];
+
+        if (dxyVal < 100) bullishFactors.push('a weakening dollar (DXY ' + inst.dxy.currentValue + ')');
+        if (rrVal < 1) bullishFactors.push('declining real rates (' + inst.realRates.currentValue + ')');
+        if (vixVal > 20) bullishFactors.push('elevated market volatility');
+        if (cpiVal > 2.5) bullishFactors.push('sticky inflation at ' + inst.cpi.currentValue);
+        if (unemplVal > 4) bullishFactors.push('a softening labor market');
+        if (dxyVal > 105) bearishFactors.push('dollar strength');
+        if (rrVal > 1.5) bearishFactors.push('high real rates');
+
+        let summary;
+        if (bullishFactors.length > bearishFactors.length) {
+            summary = 'Gold is supported by ' + bullishFactors.slice(0, 3).join(', ') + '. '
+                + 'Central bank accumulation and de-dollarization trends provide structural support.';
+        } else if (bearishFactors.length > 0) {
+            summary = 'Gold faces headwinds from ' + bearishFactors.join(' and ') + ', '
+                + 'though structural central bank demand continues to provide a floor.';
+        } else {
+            summary = 'Mixed signals across macro indicators. Gold is range-bound as bullish and bearish forces balance.';
+        }
+
+        return { score, chips, summary };
     }
 
     // --- Event Timeline ---
@@ -772,9 +898,11 @@
         const $chartSection = document.querySelector('.chart-section');
         const $detailPanelEl = document.getElementById('detailPanel');
         const $eventTimelineEl = document.getElementById('eventTimeline');
+        const $sentimentBar = document.getElementById('sentimentBar');
 
         if (currentView === 'overview') {
             // Show everything
+            if ($sentimentBar) $sentimentBar.style.display = '';
             if ($chartSection) $chartSection.style.display = '';
             if ($detailPanelEl) $detailPanelEl.style.display = '';
             if ($eventTimelineEl) $eventTimelineEl.style.display = '';
@@ -785,22 +913,22 @@
                 try { createMainChart(); } catch (e) { console.error('Chart recreate error:', e); }
             }, 50);
         } else if (currentView === 'correlations') {
-            // Hide chart, show correlations only
+            // Hide chart, show sentiment + correlations
+            if ($sentimentBar) $sentimentBar.style.display = '';
             if ($chartSection) $chartSection.style.display = 'none';
             if ($detailPanelEl) $detailPanelEl.style.display = 'none';
             if ($eventTimelineEl) $eventTimelineEl.style.display = 'none';
             $correlationsSection.style.display = 'block';
             $presidentsSection.style.display = 'none';
-            // Scroll to correlations
             $correlationsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
         } else if (currentView === 'presidents') {
-            // Hide chart, show presidents only
+            // Hide chart + sentiment, show presidents only
+            if ($sentimentBar) $sentimentBar.style.display = 'none';
             if ($chartSection) $chartSection.style.display = 'none';
             if ($detailPanelEl) $detailPanelEl.style.display = 'none';
             if ($eventTimelineEl) $eventTimelineEl.style.display = 'none';
             $correlationsSection.style.display = 'none';
             $presidentsSection.style.display = 'block';
-            // Re-render to trigger animations
             try { renderPresidents(); } catch (e) { console.error('Presidents render error:', e); }
             $presidentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
