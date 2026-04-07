@@ -29,6 +29,9 @@ const NEWSAPI_KEY = process.env.NEWSAPI_KEY || '';
 const GNEWS_KEY = process.env.GNEWS_KEY || '';
 const FINNHUB_KEY = process.env.FINNHUB_KEY || '';
 
+// Yahoo Finance — free gold OHLC (no key needed)
+const YAHOO_SYMBOL = 'GC%3DF'; // Gold futures (GC=F URL-encoded)
+
 // Ensure cache dir
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 
@@ -141,161 +144,173 @@ function getDailyDates(startStr, endStr) {
     return dates;
 }
 
-// --- API Routes ---
+// ============================================
+// YAHOO FINANCE — Free Gold OHLC (no API key)
+// ============================================
 
-// GET /api/usage — check API quota
-app.get('/api/usage', async (req, res) => {
-    try {
-        const data = await apiRequest('/usage');
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+function yahooRequest(url) {
+    return new Promise((resolve, reject) => {
+        https.get(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+        }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    resolve(JSON.parse(data));
+                } catch (e) {
+                    reject(new Error('Yahoo parse error: ' + data.substring(0, 200)));
+                }
+            });
+        }).on('error', reject);
+    });
+}
 
-// GET /api/latest — latest gold price
-app.get('/api/latest', async (req, res) => {
-    const cacheKey = 'gold_latest';
-    const cached = readCache(cacheKey, 10 * 60 * 1000); // 10 min cache
-    if (cached) return res.json(cached);
+// Convert Yahoo Finance chart response to OHLC bars
+function parseYahooChart(json) {
+    const result = json?.chart?.result?.[0];
+    if (!result || !result.timestamp) return [];
 
-    try {
-        const data = await apiRequest('/rates/latest', { symbols: 'XAU' });
-        if (data.success) {
-            writeCache(cacheKey, data);
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+    const timestamps = result.timestamp;
+    const quote = result.indicators?.quote?.[0];
+    if (!quote) return [];
 
-// GET /api/gold?start=YYYY-MM-DD&end=YYYY-MM-DD&interval=weekly|daily
-// Fetches gold OHLC data. Uses cache aggressively.
-// For large ranges, fetches weekly to conserve API calls.
-app.get('/api/gold', async (req, res) => {
-    const { start, end, interval } = req.query;
-    if (!start || !end) {
-        return res.status(400).json({ error: 'start and end dates required (YYYY-MM-DD)' });
-    }
+    const bars = [];
+    for (let i = 0; i < timestamps.length; i++) {
+        const o = quote.open?.[i];
+        const h = quote.high?.[i];
+        const l = quote.low?.[i];
+        const c = quote.close?.[i];
+        if (o == null || h == null || l == null || c == null) continue;
 
-    const masterCacheKey = `gold_series_${interval || 'weekly'}_${start}_${end}`;
-    const cached = readCache(masterCacheKey, 24 * 60 * 60 * 1000); // 24h cache for full series
-    if (cached) return res.json(cached);
+        const date = new Date(timestamps[i] * 1000);
+        const dateStr = date.toISOString().split('T')[0];
 
-    const dates = (interval === 'daily')
-        ? getDailyDates(start, end)
-        : getWeeklyDates(start, end);
-
-    console.log(`Fetching ${dates.length} gold data points (${interval || 'weekly'}) from ${start} to ${end}`);
-
-    // Check how many are already cached
-    const uncached = dates.filter(d => !readCache(`gold_${d}`));
-    console.log(`  → ${dates.length - uncached.length} cached, ${uncached.length} need API calls`);
-
-    // Fetch in batches of 5 with delay to respect rate limits
-    const BATCH_SIZE = 5;
-    const BATCH_DELAY = 1200; // ms between batches
-
-    for (let i = 0; i < uncached.length; i += BATCH_SIZE) {
-        const batch = uncached.slice(i, i + BATCH_SIZE);
-        await Promise.all(batch.map(d => fetchGoldDate(d)));
-
-        if (i + BATCH_SIZE < uncached.length) {
-            await new Promise(r => setTimeout(r, BATCH_DELAY));
-        }
-    }
-
-    // Collect all results
-    const results = [];
-    for (const d of dates) {
-        const bar = readCache(`gold_${d}`);
-        if (bar && bar.open && bar.close) {
-            results.push(bar);
-        }
+        bars.push({
+            time: dateStr,
+            open: Math.round(o * 100) / 100,
+            high: Math.round(h * 100) / 100,
+            low: Math.round(l * 100) / 100,
+            close: Math.round(c * 100) / 100,
+        });
     }
 
     // Deduplicate by date
     const seen = new Set();
-    const deduped = results.filter(r => {
-        if (seen.has(r.time)) return false;
-        seen.add(r.time);
+    return bars.filter(b => {
+        if (seen.has(b.time)) return false;
+        seen.add(b.time);
         return true;
-    }).sort((a, b) => a.time.localeCompare(b.time));
+    });
+}
 
-    const response = { success: true, count: deduped.length, data: deduped };
-    writeCache(masterCacheKey, response);
-    res.json(response);
+// --- API Routes ---
+
+// GET /api/usage — check if data source is available
+app.get('/api/usage', async (req, res) => {
+    // Yahoo Finance is always available (free, no key)
+    res.json({
+        plan: 'yahoo-finance-free',
+        source: 'Yahoo Finance',
+        used: 0,
+        quota: 'unlimited',
+        note: 'Free OHLC data via Yahoo Finance — no API key needed',
+    });
 });
 
-// GET /api/gold/range — quick fetch using fluctuation endpoint (no API call per day)
-app.get('/api/gold/range', async (req, res) => {
-    const { start, end } = req.query;
-    if (!start || !end) {
-        return res.status(400).json({ error: 'start and end dates required' });
-    }
-
-    const cacheKey = `gold_fluct_${start}_${end}`;
-    const cached = readCache(cacheKey, 60 * 60 * 1000);
+// GET /api/latest — latest gold price via Yahoo Finance
+app.get('/api/latest', async (req, res) => {
+    const cacheKey = 'yahoo_gold_latest';
+    const cached = readCache(cacheKey, 5 * 60 * 1000); // 5 min cache
     if (cached) return res.json(cached);
 
     try {
-        const data = await apiRequest('/rates/fluctuation', {
-            symbols: 'XAU',
-            startDate: start,
-            endDate: end,
-        });
-        if (data.success) writeCache(cacheKey, data);
-        res.json(data);
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1m&range=1d`;
+        const json = await yahooRequest(url);
+        const result = json?.chart?.result?.[0];
+        const meta = result?.meta;
+
+        if (meta && meta.regularMarketPrice) {
+            const data = {
+                success: true,
+                source: 'yahoo',
+                rates: { XAU: meta.regularMarketPrice },
+                previousClose: meta.chartPreviousClose || meta.previousClose,
+                marketState: meta.marketState,
+                timestamp: new Date().toISOString(),
+            };
+            writeCache(cacheKey, data);
+            res.json(data);
+        } else {
+            throw new Error('No price data from Yahoo');
+        }
     } catch (err) {
+        // Fallback: try CommodityPriceAPI if key exists
+        if (API_KEY) {
+            try {
+                const data = await apiRequest('/rates/latest', { symbols: 'XAU' });
+                if (data.success) writeCache(cacheKey, data);
+                return res.json(data);
+            } catch (e) { /* fall through */ }
+        }
         res.status(500).json({ error: err.message });
     }
 });
 
-// GET /api/historical/:date — single date OHLC
-app.get('/api/historical/:date', async (req, res) => {
-    const bar = await fetchGoldDate(req.params.date);
-    if (bar) {
-        res.json({ success: true, data: bar });
-    } else {
-        res.status(404).json({ error: 'No data for date' });
-    }
-});
+// GET /api/gold?interval=weekly|daily — full gold OHLC via Yahoo Finance
+// Yahoo supports range params: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max
+app.get('/api/gold', async (req, res) => {
+    const { interval } = req.query;
+    const yahooInterval = interval === 'daily' ? '1d' : '1wk';
+    const cacheKey = `yahoo_gold_${yahooInterval}`;
+    const cached = readCache(cacheKey, 60 * 60 * 1000); // 1h cache
+    if (cached) return res.json(cached);
 
-// --- Prefetch helper endpoint ---
-// POST /api/prefetch — trigger background fetch for a date range
-app.post('/api/prefetch', express.json(), async (req, res) => {
-    const { start, end, interval } = req.body;
-    if (!start || !end) return res.status(400).json({ error: 'need start/end' });
+    try {
+        // Fetch max range for full history
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=${yahooInterval}&range=max`;
+        console.log(`Fetching gold OHLC from Yahoo Finance (${yahooInterval})...`);
+        const json = await yahooRequest(url);
+        const bars = parseYahooChart(json);
 
-    // Return immediately, fetch in background
-    res.json({ status: 'prefetching', start, end, interval: interval || 'weekly' });
-
-    const dates = (interval === 'daily')
-        ? getDailyDates(start, end)
-        : getWeeklyDates(start, end);
-
-    const uncached = dates.filter(d => !readCache(`gold_${d}`));
-    console.log(`Prefetching ${uncached.length}/${dates.length} dates...`);
-
-    const BATCH_SIZE = 5;
-    const BATCH_DELAY = 1200;
-
-    for (let i = 0; i < uncached.length; i += BATCH_SIZE) {
-        const batch = uncached.slice(i, i + BATCH_SIZE);
-        await Promise.all(batch.map(d => fetchGoldDate(d)));
-        if (i + BATCH_SIZE < uncached.length) {
-            await new Promise(r => setTimeout(r, BATCH_DELAY));
+        if (bars.length > 0) {
+            const response = { success: true, source: 'yahoo', count: bars.length, data: bars };
+            writeCache(cacheKey, response);
+            console.log(`  → Got ${bars.length} bars from Yahoo Finance`);
+            res.json(response);
+        } else {
+            throw new Error('No OHLC data from Yahoo Finance');
         }
+    } catch (err) {
+        console.error('Yahoo Finance error:', err.message);
+        // Fallback: try CommodityPriceAPI if key exists
+        if (API_KEY) {
+            try {
+                const { start, end } = req.query;
+                if (start && end) {
+                    const dates = (interval === 'daily')
+                        ? getDailyDates(start, end)
+                        : getWeeklyDates(start, end);
+                    const results = [];
+                    for (const d of dates) {
+                        const bar = await fetchGoldDate(d);
+                        if (bar && bar.open && bar.close) results.push(bar);
+                    }
+                    return res.json({ success: true, source: 'commodity-api', count: results.length, data: results });
+                }
+            } catch (e) { /* fall through */ }
+        }
+        res.status(500).json({ error: err.message });
     }
-    console.log(`Prefetch complete: ${start} to ${end}`);
 });
 
 // ============================================
 // NEWS AGGREGATION — Multi-source gold news
 // ============================================
 
-const GOLD_KEYWORDS = ['gold', 'XAU', 'precious metal', 'bullion', 'Fed', 'inflation', 'central bank', 'interest rate', 'treasury', 'dollar'];
+const GOLD_KEYWORDS = ['gold', 'XAU', 'precious metal', 'bullion', 'Fed', 'inflation', 'central bank', 'interest rate', 'treasury', 'dollar', 'tariff', 'China', 'trade war', 'sanctions', 'PBOC', 'yuan'];
 
 function httpGet(url, headers = {}) {
     return new Promise((resolve, reject) => {
@@ -309,11 +324,12 @@ function httpGet(url, headers = {}) {
     });
 }
 
-// --- NewsAPI.org ---
+// --- NewsAPI.org (Gold + US/China macro focus) ---
 async function fetchNewsAPI() {
     if (!NEWSAPI_KEY) return [];
     try {
-        const url = `https://newsapi.org/v2/everything?q=gold+OR+XAU+OR+bullion+OR+"gold+price"&language=en&sortBy=publishedAt&pageSize=20&apiKey=${NEWSAPI_KEY}`;
+        const query = encodeURIComponent('(gold OR XAU OR bullion OR "gold price") AND (Fed OR inflation OR tariff OR China OR "trade war" OR "interest rate" OR treasury OR "central bank" OR sanctions)');
+        const url = `https://newsapi.org/v2/everything?q=${query}&language=en&sortBy=publishedAt&pageSize=30&apiKey=${NEWSAPI_KEY}`;
         const resp = await httpGet(url);
         const json = JSON.parse(resp.data);
         if (json.status !== 'ok' || !json.articles) return [];
@@ -479,6 +495,10 @@ async function aggregateNews() {
         if (text.includes('central bank')) score += 1;
         if (text.includes('treasury')) score += 1;
         if (text.includes('dollar') || text.includes('dxy')) score += 1;
+        if (text.includes('china') || text.includes('beijing') || text.includes('pboc')) score += 2;
+        if (text.includes('tariff') || text.includes('trade war') || text.includes('sanctions')) score += 2;
+        if (text.includes('yuan') || text.includes('renminbi')) score += 1;
+        if (text.includes('us') || text.includes('america') || text.includes('washington')) score += 1;
 
         // Sentiment hints
         let sentiment = 'neutral';

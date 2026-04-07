@@ -37,15 +37,13 @@
         return resp.json();
     }
 
-    // Fetch live gold data from backend
+    // Fetch live gold data from backend (Yahoo Finance — free, no key needed)
     async function fetchLiveGoldData() {
         try {
-            // First check if API is available
+            // Check data source status
             const usage = await apiFetch('/usage');
-            if (!usage.plan) return false;
-
             apiAvailable = true;
-            console.log(`API connected — plan: ${usage.plan}, used: ${usage.used}/${usage.quota}`);
+            console.log(`Data source: ${usage.source || usage.plan} — ${usage.note || ''}`);
 
             // Fetch latest price
             try {
@@ -58,14 +56,12 @@
                 console.warn('Could not fetch latest price:', e.message);
             }
 
-            // Fetch weekly historical data (conserves API calls)
-            // Start from 2000 to cover full history
-            const today = new Date().toISOString().split('T')[0];
-            const data = await apiFetch(`/gold?start=2000-01-01&end=${today}&interval=weekly`);
+            // Fetch historical OHLC (Yahoo Finance gives full history with range=max)
+            const data = await apiFetch('/gold?interval=weekly');
 
             if (data.success && data.data && data.data.length > 0) {
                 liveGoldData = data.data;
-                console.log(`Loaded ${data.count} live gold OHLC bars`);
+                console.log(`Loaded ${data.count} live gold OHLC bars (source: ${data.source || 'api'})`);
                 return true;
             }
             return false;
