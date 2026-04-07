@@ -1226,6 +1226,295 @@ body {
 }
 
 /* ============================================
+   NEWS FEED SECTION
+   ============================================ */
+
+.news-section {
+    padding-top: 1rem;
+}
+
+.news-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.news-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.news-sources {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.news-source-badge {
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid;
+}
+
+.news-source-badge.active {
+    color: var(--green);
+    border-color: rgba(74, 222, 128, 0.2);
+    background: rgba(74, 222, 128, 0.06);
+}
+
+.news-source-badge.inactive {
+    color: var(--light-gray);
+    border-color: var(--border);
+    background: rgba(255, 255, 255, 0.02);
+    opacity: 0.5;
+}
+
+.news-filter-group {
+    display: flex;
+    gap: 2px;
+    background: var(--surface);
+    border-radius: 6px;
+    padding: 3px;
+    border: 1px solid var(--border);
+}
+
+.news-filter-btn {
+    background: none;
+    border: none;
+    color: var(--light-gray);
+    font-family: var(--font);
+    font-size: 0.7rem;
+    font-weight: 500;
+    padding: 0.3rem 0.75rem;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all var(--transition);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.news-filter-btn:hover {
+    color: var(--white);
+}
+
+.news-filter-btn.active {
+    background: var(--mid-gray);
+    color: var(--white);
+}
+
+.news-refresh-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--light-gray);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all var(--transition);
+}
+
+.news-refresh-btn:hover {
+    color: var(--white);
+    border-color: var(--border-hover);
+}
+
+.news-refresh-btn.spinning svg {
+    animation: spin 0.6s linear infinite;
+}
+
+.news-status {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 2rem;
+    justify-content: center;
+    color: var(--light-gray);
+    font-size: 0.8rem;
+    font-weight: 300;
+}
+
+.news-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 1rem;
+}
+
+.news-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: all var(--transition);
+    text-decoration: none;
+    color: inherit;
+}
+
+.news-card:hover {
+    border-color: var(--border-hover);
+    background: var(--surface-elevated);
+    transform: translateY(-2px);
+}
+
+.news-card-image {
+    width: 100%;
+    height: 160px;
+    background-size: cover;
+    background-position: center;
+    background-color: var(--mid-gray);
+}
+
+.news-card-body {
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    flex: 1;
+}
+
+.news-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.news-card-source {
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--gold);
+}
+
+.news-card-time {
+    font-size: 0.6rem;
+    color: var(--light-gray);
+    font-weight: 400;
+}
+
+.news-card-sentiment {
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.1rem 0.45rem;
+    border-radius: 3px;
+    margin-left: auto;
+}
+
+.news-card-sentiment.bullish {
+    color: var(--green);
+    background: rgba(74, 222, 128, 0.1);
+}
+
+.news-card-sentiment.bearish {
+    color: var(--red);
+    background: rgba(248, 113, 113, 0.1);
+}
+
+.news-card-sentiment.neutral {
+    color: var(--light-gray);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.news-card-title {
+    font-size: 0.9rem;
+    font-weight: 500;
+    line-height: 1.45;
+    letter-spacing: 0.01em;
+    color: var(--white);
+}
+
+.news-card-desc {
+    font-size: 0.75rem;
+    font-weight: 300;
+    line-height: 1.6;
+    color: rgba(245, 245, 247, 0.7);
+}
+
+.news-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: auto;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+}
+
+.news-card-provider {
+    font-size: 0.55rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--light-gray);
+    padding: 0.1rem 0.4rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 3px;
+}
+
+.news-card-relevance {
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    color: var(--gold);
+}
+
+.news-empty {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 3rem 2rem;
+    text-align: center;
+    color: var(--light-gray);
+}
+
+.news-empty p {
+    font-size: 0.85rem;
+    font-weight: 300;
+}
+
+.news-setup-hint {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    text-align: left;
+    max-width: 400px;
+}
+
+.news-setup-hint p {
+    font-size: 0.75rem;
+}
+
+.news-setup-hint code {
+    font-size: 0.7rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    background: rgba(201, 168, 76, 0.08);
+    color: var(--gold);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid rgba(201, 168, 76, 0.15);
+}
+
+/* ============================================
    RESPONSIVE
    ============================================ */
 
@@ -1496,6 +1785,35 @@ body {
     .president-analysis {
         font-size: 0.68rem;
         padding: 0.6rem;
+    }
+
+    /* News */
+    .news-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .news-controls {
+        width: 100%;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .news-grid {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    .news-card-image {
+        height: 120px;
+    }
+
+    .news-card-body {
+        padding: 1rem;
+    }
+
+    .news-card-title {
+        font-size: 0.82rem;
     }
 
     /* Tooltip */

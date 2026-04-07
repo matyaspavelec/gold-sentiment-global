@@ -29,6 +29,7 @@
             <button class="nav-btn active" data-view="overview">Overview</button>
             <button class="nav-btn" data-view="correlations">Correlations</button>
             <button class="nav-btn" data-view="presidents">Presidential Terms</button>
+            <button class="nav-btn" data-view="news">News Feed</button>
         </nav>
         <div class="header-right">
             <div class="timeframe-selector">
@@ -148,6 +149,30 @@
         <section class="presidents-section" id="presidentsSection" style="display:none;">
             <h3 class="section-title">Gold Performance by Presidential Term</h3>
             <div class="presidents-grid" id="presidentsGrid"></div>
+        </section>
+
+        <!-- News Feed -->
+        <section class="news-section" id="newsSection" style="display:none;">
+            <div class="news-header">
+                <h3 class="section-title">Gold & Macro News Feed</h3>
+                <div class="news-controls">
+                    <div class="news-sources" id="newsSources"></div>
+                    <div class="news-filter-group">
+                        <button class="news-filter-btn active" data-filter="all">All</button>
+                        <button class="news-filter-btn" data-filter="bullish">Bullish</button>
+                        <button class="news-filter-btn" data-filter="bearish">Bearish</button>
+                        <button class="news-filter-btn" data-filter="neutral">Neutral</button>
+                    </div>
+                    <button class="news-refresh-btn" id="newsRefreshBtn" title="Refresh news">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="news-status" id="newsStatus">
+                <div class="loading-spinner" style="width:20px;height:20px;"></div>
+                <span>Loading news from multiple sources...</span>
+            </div>
+            <div class="news-grid" id="newsGrid"></div>
         </section>
     </main>
 

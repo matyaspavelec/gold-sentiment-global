@@ -87,6 +87,7 @@
         bindTimeframe();
         bindDetailClose();
         bindChartControls();
+        bindNewsControls();
 
         // Then render content (wrapped in try/catch so errors don't kill the page)
         try { createMainChart(); } catch (e) { console.error('Chart error:', e); }
@@ -899,6 +900,10 @@
         const $detailPanelEl = document.getElementById('detailPanel');
         const $eventTimelineEl = document.getElementById('eventTimeline');
         const $sentimentBar = document.getElementById('sentimentBar');
+        const $newsSection = document.getElementById('newsSection');
+
+        // Hide all optional sections by default
+        if ($newsSection) $newsSection.style.display = 'none';
 
         if (currentView === 'overview') {
             // Show everything
@@ -931,6 +936,19 @@
             $presidentsSection.style.display = 'block';
             try { renderPresidents(); } catch (e) { console.error('Presidents render error:', e); }
             $presidentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else if (currentView === 'news') {
+            // Show news feed only
+            if ($sentimentBar) $sentimentBar.style.display = '';
+            if ($chartSection) $chartSection.style.display = 'none';
+            if ($detailPanelEl) $detailPanelEl.style.display = 'none';
+            if ($eventTimelineEl) $eventTimelineEl.style.display = 'none';
+            $correlationsSection.style.display = 'none';
+            $presidentsSection.style.display = 'none';
+            if ($newsSection) $newsSection.style.display = 'block';
+            // Fetch news on first visit
+            if (!newsLoaded) {
+                fetchNews();
+            }
         }
     }
 
@@ -1057,6 +1075,160 @@
     function formatDateLong(dateStr) {
         const d = new Date(dateStr);
         return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    }
+
+    // --- News Feed ---
+    let newsData = null;
+    let newsFilter = 'all';
+    let newsLoaded = false;
+
+    async function fetchNews(forceRefresh = false) {
+        const $status = document.getElementById('newsStatus');
+        const $grid = document.getElementById('newsGrid');
+        const $sources = document.getElementById('newsSources');
+
+        if ($status) $status.style.display = 'flex';
+        if ($grid) $grid.innerHTML = '';
+
+        try {
+            const url = forceRefresh ? '/api/news?refresh=1' : '/api/news';
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+
+            if (data.success && data.articles && data.articles.length > 0) {
+                newsData = data;
+                newsLoaded = true;
+                renderNewsSourceBadges(data.sources);
+                renderNews();
+            } else {
+                newsLoaded = false; // Allow retry
+                showNewsError('No articles available. Configure at least one API key or check your internet connection for RSS feeds.');
+            }
+        } catch (err) {
+            console.error('News fetch error:', err);
+            showNewsError('Could not load news. Ensure the server is running and API keys are configured.');
+        }
+
+        if ($status) $status.style.display = 'none';
+    }
+
+    function showNewsError(msg) {
+        const $grid = document.getElementById('newsGrid');
+        const $status = document.getElementById('newsStatus');
+        if ($status) $status.style.display = 'none';
+        if ($grid) {
+            $grid.innerHTML = `
+                <div class="news-empty">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3">
+                        <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/>
+                    </svg>
+                    <p>${msg}</p>
+                    <div class="news-setup-hint">
+                        <p>Add API keys to your <code>.env</code> file:</p>
+                        <code>NEWSAPI_KEY=your_key_here</code>
+                        <code>GNEWS_KEY=your_key_here</code>
+                        <code>FINNHUB_KEY=your_key_here</code>
+                        <p style="margin-top:0.5rem;font-size:0.65rem;color:var(--light-gray);">RSS feeds (Kitco, Reuters, Mining.com) work without keys.</p>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    function renderNewsSourceBadges(sources) {
+        const $sources = document.getElementById('newsSources');
+        if (!$sources || !sources) return;
+
+        $sources.innerHTML = Object.entries(sources).map(([name, status]) => {
+            const isActive = status === 'active';
+            return `<span class="news-source-badge ${isActive ? 'active' : 'inactive'}">${name}${isActive ? '' : ' (no key)'}</span>`;
+        }).join('');
+    }
+
+    function renderNews() {
+        const $grid = document.getElementById('newsGrid');
+        if (!$grid || !newsData || !newsData.articles) return;
+
+        let articles = newsData.articles;
+
+        // Apply filter
+        if (newsFilter !== 'all') {
+            articles = articles.filter(a => a.sentiment === newsFilter);
+        }
+
+        if (articles.length === 0) {
+            $grid.innerHTML = '<div class="news-empty"><p>No articles match this filter.</p></div>';
+            return;
+        }
+
+        $grid.innerHTML = articles.slice(0, 50).map(article => {
+            const timeAgo = getTimeAgo(article.publishedAt);
+            const sentimentClass = article.sentiment || 'neutral';
+            const sentimentLabel = article.sentiment === 'bullish' ? 'Bullish' : article.sentiment === 'bearish' ? 'Bearish' : 'Neutral';
+            const relevanceDots = Math.min(article.relevanceScore || 0, 5);
+
+            return `
+                <a href="${escapeHTML(article.url)}" target="_blank" rel="noopener noreferrer" class="news-card">
+                    ${article.image ? `<div class="news-card-image" style="background-image:url('${escapeHTML(article.image)}')"></div>` : ''}
+                    <div class="news-card-body">
+                        <div class="news-card-meta">
+                            <span class="news-card-source">${escapeHTML(article.source)}</span>
+                            <span class="news-card-time">${timeAgo}</span>
+                            <span class="news-card-sentiment ${sentimentClass}">${sentimentLabel}</span>
+                        </div>
+                        <h4 class="news-card-title">${escapeHTML(article.title)}</h4>
+                        ${article.description ? `<p class="news-card-desc">${escapeHTML(article.description.substring(0, 200))}${article.description.length > 200 ? '...' : ''}</p>` : ''}
+                        <div class="news-card-footer">
+                            <span class="news-card-provider">${escapeHTML(article.provider)}</span>
+                            <span class="news-card-relevance" title="Gold relevance">${'●'.repeat(relevanceDots)}${'○'.repeat(5 - relevanceDots)}</span>
+                        </div>
+                    </div>
+                </a>
+            `;
+        }).join('');
+    }
+
+    function bindNewsControls() {
+        // Filter buttons
+        document.querySelectorAll('.news-filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.news-filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                newsFilter = btn.dataset.filter;
+                renderNews();
+            });
+        });
+
+        // Refresh button
+        const $refresh = document.getElementById('newsRefreshBtn');
+        if ($refresh) {
+            $refresh.addEventListener('click', () => {
+                $refresh.classList.add('spinning');
+                fetchNews(true).finally(() => {
+                    setTimeout(() => $refresh.classList.remove('spinning'), 500);
+                });
+            });
+        }
+    }
+
+    function getTimeAgo(dateStr) {
+        const now = Date.now();
+        const then = new Date(dateStr).getTime();
+        const diff = now - then;
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return 'just now';
+        if (mins < 60) return mins + 'm ago';
+        const hours = Math.floor(mins / 60);
+        if (hours < 24) return hours + 'h ago';
+        const days = Math.floor(hours / 24);
+        if (days < 7) return days + 'd ago';
+        return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    function escapeHTML(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
     // --- Boot ---
