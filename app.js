@@ -102,6 +102,9 @@
         // Hide loading overlay
         hideLoading();
 
+        // Load news feed in sidebar
+        fetchNews();
+
         // Then try to load live data in background
         const hasLive = await fetchLiveGoldData();
         if (hasLive) {
@@ -896,19 +899,15 @@
     }
 
     function updateView() {
-        const $chartSection = document.querySelector('.chart-section');
+        const $dashboardRow = document.getElementById('dashboardRow');
         const $detailPanelEl = document.getElementById('detailPanel');
         const $eventTimelineEl = document.getElementById('eventTimeline');
         const $sentimentBar = document.getElementById('sentimentBar');
-        const $newsSection = document.getElementById('newsSection');
-
-        // Hide all optional sections by default
-        if ($newsSection) $newsSection.style.display = 'none';
 
         if (currentView === 'overview') {
-            // Show everything
+            // Show everything — chart + news sidebar + correlations
             if ($sentimentBar) $sentimentBar.style.display = '';
-            if ($chartSection) $chartSection.style.display = '';
+            if ($dashboardRow) $dashboardRow.style.display = '';
             if ($detailPanelEl) $detailPanelEl.style.display = '';
             if ($eventTimelineEl) $eventTimelineEl.style.display = '';
             $correlationsSection.style.display = 'block';
@@ -920,7 +919,7 @@
         } else if (currentView === 'correlations') {
             // Hide chart, show sentiment + correlations
             if ($sentimentBar) $sentimentBar.style.display = '';
-            if ($chartSection) $chartSection.style.display = 'none';
+            if ($dashboardRow) $dashboardRow.style.display = 'none';
             if ($detailPanelEl) $detailPanelEl.style.display = 'none';
             if ($eventTimelineEl) $eventTimelineEl.style.display = 'none';
             $correlationsSection.style.display = 'block';
@@ -929,26 +928,13 @@
         } else if (currentView === 'presidents') {
             // Hide chart + sentiment, show presidents only
             if ($sentimentBar) $sentimentBar.style.display = 'none';
-            if ($chartSection) $chartSection.style.display = 'none';
+            if ($dashboardRow) $dashboardRow.style.display = 'none';
             if ($detailPanelEl) $detailPanelEl.style.display = 'none';
             if ($eventTimelineEl) $eventTimelineEl.style.display = 'none';
             $correlationsSection.style.display = 'none';
             $presidentsSection.style.display = 'block';
             try { renderPresidents(); } catch (e) { console.error('Presidents render error:', e); }
             $presidentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        } else if (currentView === 'news') {
-            // Show news feed only
-            if ($sentimentBar) $sentimentBar.style.display = '';
-            if ($chartSection) $chartSection.style.display = 'none';
-            if ($detailPanelEl) $detailPanelEl.style.display = 'none';
-            if ($eventTimelineEl) $eventTimelineEl.style.display = 'none';
-            $correlationsSection.style.display = 'none';
-            $presidentsSection.style.display = 'none';
-            if ($newsSection) $newsSection.style.display = 'block';
-            // Fetch news on first visit
-            if (!newsLoaded) {
-                fetchNews();
-            }
         }
     }
 
@@ -1162,27 +1148,24 @@
             return;
         }
 
-        $grid.innerHTML = articles.slice(0, 50).map(article => {
+        $grid.innerHTML = articles.slice(0, 40).map(article => {
             const timeAgo = getTimeAgo(article.publishedAt);
             const sentimentClass = article.sentiment || 'neutral';
-            const sentimentLabel = article.sentiment === 'bullish' ? 'Bullish' : article.sentiment === 'bearish' ? 'Bearish' : 'Neutral';
+            const sentimentLabel = article.sentiment === 'bullish' ? 'Bull' : article.sentiment === 'bearish' ? 'Bear' : '';
             const relevanceDots = Math.min(article.relevanceScore || 0, 5);
 
             return `
-                <a href="${escapeHTML(article.url)}" target="_blank" rel="noopener noreferrer" class="news-card">
-                    ${article.image ? `<div class="news-card-image" style="background-image:url('${escapeHTML(article.image)}')"></div>` : ''}
-                    <div class="news-card-body">
-                        <div class="news-card-meta">
-                            <span class="news-card-source">${escapeHTML(article.source)}</span>
-                            <span class="news-card-time">${timeAgo}</span>
-                            <span class="news-card-sentiment ${sentimentClass}">${sentimentLabel}</span>
-                        </div>
-                        <h4 class="news-card-title">${escapeHTML(article.title)}</h4>
-                        ${article.description ? `<p class="news-card-desc">${escapeHTML(article.description.substring(0, 200))}${article.description.length > 200 ? '...' : ''}</p>` : ''}
-                        <div class="news-card-footer">
-                            <span class="news-card-provider">${escapeHTML(article.provider)}</span>
-                            <span class="news-card-relevance" title="Gold relevance">${'●'.repeat(relevanceDots)}${'○'.repeat(5 - relevanceDots)}</span>
-                        </div>
+                <a href="${escapeHTML(article.url)}" target="_blank" rel="noopener noreferrer" class="news-item">
+                    <div class="news-item-meta">
+                        <span class="news-item-source">${escapeHTML(article.source)}</span>
+                        <span class="news-item-time">${timeAgo}</span>
+                        ${sentimentLabel ? `<span class="news-item-sentiment ${sentimentClass}">${sentimentLabel}</span>` : ''}
+                    </div>
+                    <div class="news-item-title">${escapeHTML(article.title)}</div>
+                    ${article.description ? `<div class="news-item-desc">${escapeHTML(article.description.substring(0, 120))}</div>` : ''}
+                    <div class="news-item-footer">
+                        <span class="news-item-provider">${escapeHTML(article.provider)}</span>
+                        <span class="news-item-relevance">${'●'.repeat(relevanceDots)}${'○'.repeat(5 - relevanceDots)}</span>
                     </div>
                 </a>
             `;
@@ -1190,10 +1173,10 @@
     }
 
     function bindNewsControls() {
-        // Filter buttons
-        document.querySelectorAll('.news-filter-btn').forEach(btn => {
+        // Filter buttons (pill style in sidebar)
+        document.querySelectorAll('.news-pill').forEach(btn => {
             btn.addEventListener('click', () => {
-                document.querySelectorAll('.news-filter-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.news-pill').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 newsFilter = btn.dataset.filter;
                 renderNews();
