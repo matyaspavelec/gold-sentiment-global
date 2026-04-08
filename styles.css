@@ -323,9 +323,15 @@ body {
 
 .chart-header {
     display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.chart-header-top {
+    display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1rem;
 }
 
 .chart-title-group {
@@ -368,7 +374,8 @@ body {
 
 .chart-legend {
     display: flex;
-    gap: 1.25rem;
+    flex-wrap: wrap;
+    gap: 0.6rem 1.25rem;
     align-items: center;
 }
 
@@ -1598,12 +1605,6 @@ body {
     }
 
     /* Chart */
-    .chart-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.5rem;
-    }
-
     .chart-title-group {
         flex-wrap: wrap;
         gap: 0.5rem;
