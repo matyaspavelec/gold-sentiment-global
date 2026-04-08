@@ -355,6 +355,28 @@ app.get('/api/gold', async (req, res) => {
 
 const GOLD_KEYWORDS = ['gold', 'XAU', 'precious metal', 'bullion', 'Fed', 'inflation', 'central bank', 'interest rate', 'treasury', 'dollar', 'tariff', 'China', 'trade war', 'sanctions', 'PBOC', 'yuan'];
 
+// Strip HTML tags and decode entities
+function cleanHTML(str) {
+    if (!str) return '';
+    return str
+        .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&rsquo;/g, "'")
+        .replace(/&lsquo;/g, "'")
+        .replace(/&rdquo;/g, '"')
+        .replace(/&ldquo;/g, '"')
+        .replace(/&mdash;/g, '—')
+        .replace(/&ndash;/g, '–')
+        .replace(/&#\d+;/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function httpGet(url, headers = {}) {
     return new Promise((resolve, reject) => {
         const mod = url.startsWith('https') ? https : http;
@@ -465,8 +487,8 @@ async function fetchRSSFeed(feedUrl, sourceName) {
             const pubDate = item.pubDate || item.published || item.updated || '';
 
             return {
-                title: typeof title === 'string' ? title : String(title),
-                description: typeof desc === 'string' ? desc.replace(/<[^>]*>/g, '').substring(0, 300) : '',
+                title: cleanHTML(typeof title === 'string' ? title : String(title)),
+                description: cleanHTML(typeof desc === 'string' ? desc : '').substring(0, 300),
                 url: typeof link === 'string' ? link : '',
                 source: sourceName,
                 publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
