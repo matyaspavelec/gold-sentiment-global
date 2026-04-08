@@ -589,10 +589,11 @@ async function aggregateNews() {
     // FILTER: only keep articles with relevance score >= 2 (must mention gold or a direct driver)
     const filtered = deduped.filter(a => a.relevanceScore >= 2);
 
-    // Sort by relevance first, then by date
+    // Sort by date first (newest), then relevance as tiebreaker
     filtered.sort((a, b) => {
-        if (b.relevanceScore !== a.relevanceScore) return b.relevanceScore - a.relevanceScore;
-        return new Date(b.publishedAt) - new Date(a.publishedAt);
+        const timeDiff = new Date(b.publishedAt) - new Date(a.publishedAt);
+        if (timeDiff !== 0) return timeDiff;
+        return b.relevanceScore - a.relevanceScore;
     });
 
     return filtered;

@@ -124,8 +124,12 @@
         if (!badge) {
             badge = document.createElement('span');
             badge.id = 'dataSourceBadge';
-            badge.style.cssText = 'font-size:0.6rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:0.2rem 0.6rem;border-radius:4px;margin-left:1rem;';
-            document.querySelector('.chart-title-group').appendChild(badge);
+            badge.style.cssText = 'font-size:0.55rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:0.15rem 0.5rem;border-radius:4px;vertical-align:middle;';
+            // Insert after the change% badge, not in the legend area
+            const changeEl = document.getElementById('currentChange');
+            if (changeEl && changeEl.parentNode) {
+                changeEl.parentNode.insertBefore(badge, changeEl.nextSibling);
+            }
         }
         if (isLive) {
             badge.textContent = 'LIVE';
