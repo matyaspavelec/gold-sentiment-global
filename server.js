@@ -216,25 +216,40 @@ function parseYahooChart(json) {
     });
 }
 
+// --- Pre-fetched data fallback (for cloud hosts where Yahoo is blocked) ---
+const PREFETCH_FILE = path.join(__dirname, 'gold-ohlc-prefetch.json');
+
+function loadPrefetchedData() {
+    try {
+        if (fs.existsSync(PREFETCH_FILE)) {
+            return JSON.parse(fs.readFileSync(PREFETCH_FILE, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Failed to load prefetch file:', e.message);
+    }
+    return null;
+}
+
 // --- API Routes ---
 
 // GET /api/usage — check if data source is available
 app.get('/api/usage', async (req, res) => {
     res.json({
-        plan: 'yahoo-finance',
-        source: 'Yahoo Finance (query2)',
+        plan: 'multi-source',
+        source: 'Yahoo Finance / Prefetched Data',
         used: 0,
         quota: 'unlimited',
-        note: 'Free OHLC data via Yahoo Finance — no API key needed',
+        note: 'Free OHLC data — auto-fallback if Yahoo is blocked',
     });
 });
 
 // GET /api/latest — latest gold price
 app.get('/api/latest', async (req, res) => {
-    const cacheKey = 'gold_latest_v3';
+    const cacheKey = 'gold_latest_v4';
     const cached = readCache(cacheKey, 5 * 60 * 1000); // 5 min cache
     if (cached) return res.json(cached);
 
+    // Try Yahoo Finance
     try {
         const url = 'https://query2.finance.yahoo.com/v8/finance/chart/GC%3DF?interval=1m&range=1d';
         const json = await yahooRequest(url);
@@ -251,29 +266,43 @@ app.get('/api/latest', async (req, res) => {
             writeCache(cacheKey, data);
             return res.json(data);
         }
-        throw new Error('No price in Yahoo response');
     } catch (err) {
-        console.error('Yahoo latest failed:', err.message);
-        // Fallback: CommodityPriceAPI if key exists
-        if (API_KEY) {
-            try {
-                const data = await apiRequest('/rates/latest', { symbols: 'XAU' });
-                if (data.success) { writeCache(cacheKey, data); return res.json(data); }
-            } catch (e) { /* fall through */ }
-        }
-        res.status(500).json({ error: err.message });
+        console.log('Yahoo latest failed:', err.message);
     }
+
+    // Fallback: CommodityPriceAPI if key exists
+    if (API_KEY) {
+        try {
+            const data = await apiRequest('/rates/latest', { symbols: 'XAU' });
+            if (data.success) { writeCache(cacheKey, data); return res.json(data); }
+        } catch (e) { /* fall through */ }
+    }
+
+    // Fallback: latest price from prefetched data
+    const prefetch = loadPrefetchedData();
+    if (prefetch && prefetch.latestPrice) {
+        const data = {
+            success: true,
+            source: 'prefetched',
+            rates: { XAU: prefetch.latestPrice },
+            fetchedAt: prefetch.fetchedAt,
+            timestamp: new Date().toISOString(),
+        };
+        return res.json(data);
+    }
+
+    res.status(500).json({ error: 'All gold price sources failed' });
 });
 
 // GET /api/gold?interval=weekly|daily — full gold OHLC history
 app.get('/api/gold', async (req, res) => {
     const { interval } = req.query;
     const yahooInterval = interval === 'daily' ? '1d' : '1wk';
-    const cacheKey = `gold_ohlc_v2_${yahooInterval}`;
+    const cacheKey = `gold_ohlc_v3_${yahooInterval}`;
     const cached = readCache(cacheKey, 60 * 60 * 1000); // 1h cache
     if (cached) return res.json(cached);
 
-    // Try Yahoo Finance (with crumb auth for cloud servers)
+    // Try Yahoo Finance first
     try {
         const url = `https://query2.finance.yahoo.com/v8/finance/chart/GC%3DF?interval=${yahooInterval}&range=max`;
         console.log(`Fetching gold OHLC from Yahoo Finance (${yahooInterval})...`);
@@ -286,9 +315,8 @@ app.get('/api/gold', async (req, res) => {
             console.log(`  → Got ${bars.length} bars from Yahoo Finance`);
             return res.json(response);
         }
-        throw new Error('Empty response from Yahoo');
     } catch (err) {
-        console.error('Yahoo Finance OHLC error:', err.message);
+        console.log('Yahoo Finance OHLC failed:', err.message);
     }
 
     // Fallback: CommodityPriceAPI if key exists
@@ -309,6 +337,13 @@ app.get('/api/gold', async (req, res) => {
                 return res.json(response);
             }
         } catch (e) { console.error('CommodityAPI fallback error:', e.message); }
+    }
+
+    // Fallback: serve pre-fetched data from repo
+    const prefetch = loadPrefetchedData();
+    if (prefetch && prefetch.data && prefetch.data.length > 0) {
+        console.log(`Serving ${prefetch.count} prefetched gold bars (fetched: ${prefetch.fetchedAt})`);
+        return res.json(prefetch);
     }
 
     res.status(500).json({ error: 'All gold OHLC sources failed' });
@@ -543,9 +578,12 @@ async function aggregateNews() {
 
 // --- News API Route ---
 app.get('/api/news', async (req, res) => {
-    const cacheKey = 'news_feed';
-    const cached = readCache(cacheKey, 15 * 60 * 1000); // 15 min cache
-    if (cached) return res.json(cached);
+    const cacheKey = 'news_feed_v2';
+    const forceRefresh = req.query.refresh === '1';
+    if (!forceRefresh) {
+        const cached = readCache(cacheKey, 10 * 60 * 1000); // 10 min cache
+        if (cached) return res.json(cached);
+    }
 
     try {
         const articles = await aggregateNews();
