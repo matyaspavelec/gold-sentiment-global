@@ -1,0 +1,109 @@
+name: Update Gold Price Data
+
+on:
+  schedule:
+    # Runs every 6 hours (Yahoo Finance updates during market hours)
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Manual trigger from GitHub UI
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch latest gold OHLC from Yahoo Finance
+        run: |
+          node -e "
+          const https = require('https');
+          const fs = require('fs');
+
+          function fetchJSON(url) {
+            return new Promise((resolve, reject) => {
+              https.get(url, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                  'Accept': '*/*',
+                },
+                timeout: 30000,
+              }, (res) => {
+                if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                  return fetchJSON(res.headers.location).then(resolve).catch(reject);
+                }
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                  try { resolve(JSON.parse(data)); }
+                  catch (e) { reject(new Error('Parse error: ' + data.substring(0, 200))); }
+                });
+              }).on('error', reject);
+            });
+          }
+
+          async function main() {
+            console.log('Fetching gold OHLC from Yahoo Finance...');
+            const json = await fetchJSON('https://query2.finance.yahoo.com/v8/finance/chart/GC%3DF?interval=1wk&range=max');
+            const result = json?.chart?.result?.[0];
+            if (!result || !result.timestamp) throw new Error('No data from Yahoo');
+
+            const ts = result.timestamp;
+            const q = result.indicators.quote[0];
+            const meta = result.meta;
+            const bars = [];
+            const seen = new Set();
+
+            for (let i = 0; i < ts.length; i++) {
+              const o = q.open[i], h = q.high[i], l = q.low[i], c = q.close[i];
+              if (o == null || h == null || l == null || c == null) continue;
+              const date = new Date(ts[i] * 1000).toISOString().split('T')[0];
+              if (seen.has(date)) continue;
+              seen.add(date);
+              bars.push({
+                time: date,
+                open: Math.round(o * 100) / 100,
+                high: Math.round(h * 100) / 100,
+                low: Math.round(l * 100) / 100,
+                close: Math.round(c * 100) / 100,
+              });
+            }
+
+            const output = {
+              success: true,
+              source: 'yahoo-prefetch',
+              fetchedAt: new Date().toISOString(),
+              latestPrice: meta.regularMarketPrice,
+              previousClose: meta.chartPreviousClose,
+              count: bars.length,
+              data: bars,
+            };
+
+            fs.writeFileSync('gold-ohlc-prefetch.json', JSON.stringify(output));
+            console.log('Saved ' + bars.length + ' bars, latest: \$' + meta.regularMarketPrice);
+          }
+
+          main().catch(e => { console.error('FAILED:', e.message); process.exit(1); });
+          "
+
+      - name: Check if data changed
+        id: check
+        run: |
+          if git diff --quiet gold-ohlc-prefetch.json; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No changes to gold data"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Gold data updated"
+          fi
+
+      - name: Commit and push updated data
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add gold-ohlc-prefetch.json
+          git commit -m "Auto-update gold OHLC data ($(date -u '+%Y-%m-%d %H:%M UTC'))"
+          git push
